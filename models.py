@@ -1,3 +1,10 @@
+##############################################################
+### Examples of Machine Learning Model used in demo.ipynb  ###
+##############################################################
+
+# Author: Linus Groner, 2018
+
+
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
