@@ -314,8 +314,8 @@ class PyTorchWrapper:
 
         Args:
             w (torch.Tensor): The weight vector as a 1D-torch.Tensor
-            X : The input batch.
-            Y : The output label batch.
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
         """
         if self.on_gpu=='batch': # if True, then we copy each batch to gpu
             X_device = X.cuda()
@@ -349,8 +349,8 @@ class PyTorchWrapper:
 
         Args:
             w (torch.Tensor): The weight vector as a 1D-torch.Tensor
-            X : The input batch.
-            Y : The output label batch.
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
         """
         X_torch = torch.autograd.Variable(X,requires_grad=False,volatile=volatile)
 
@@ -366,7 +366,8 @@ class PyTorchWrapper:
         
         Args:
             w (torch.Tensor): The weight vector as a 1D-torch.Tensor
-            X : The input batch.
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
         """
         
         # Hacky way to determine when the gradient for Hv_store_gradient needs to be recomputed.
@@ -406,6 +407,14 @@ class PyTorchWrapper:
             return res 
     
     def Hv(self,w,X,Y,v,**kwargs):
+        """
+        Computes the Hessian-vector product of the model using the double backprop method and returns it as as 1D-torch.Tensor
+        
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
+        """
         self.invalidate_gradient_for_hv()
         return self.Hv_store_gradient(w,X,Y,v) 
     
@@ -414,6 +423,16 @@ class PyTorchWrapper:
 
 
     def Hv_store_gradient(self,w,X,Y,v,**kwargs):
+        """
+        Computes the Hessian-vector product of the model using the double backprop method and returns it as as 1D-torch.Tensor.
+        If the gradient is known from a previous computation, (indicated by self.evaluate_gradient_for_hv )it is not recomputed.
+        
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
+            v (torch.Tensor): the vector to be multiplied
+        """
         if self.on_gpu=='batch': # if True, then we copy each batch to gpu
             X_device = X.cuda()
             if id(X)!=id(Y): # if input==labels, e.g. for autoencoders, no need to copy Y again.
@@ -460,6 +479,15 @@ class PyTorchWrapper:
         #return res
 
     def hessian(self,w,X,Y,**kwargs):
+        """
+        Computes the Hessian of the model by filling each column by a Hessian-vector 
+        product with the unit vectors of the standard basis.
+        
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X (torch.Tensor): The input batch.
+            Y (torch.Tensor): The output label batch.
+        """
         #self.invalidate_gradient_for_hv()
         H = w.new((self.d,self.d))#np.empty((self.d,self.d))
         v = torch.zeros_like(w)
