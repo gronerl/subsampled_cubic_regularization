@@ -15,9 +15,15 @@ import numpy as np
 
 def SAGA(w, loss, gradient, X=None, Y=None, opt=None, **kwargs):
 
+    assert(not w.is_cuda and not X.is_cuda and not Y.is_cuda), "No GPU for SAGA."
+    
+    w = w.numpy()
+    X = X.numpy()
+    Y = Y.numpy()
+    
     print ('--- SAGA ---')
     n = X.shape[0]
-    d = X.shape[1]
+    d = len(w)
     
     n_epochs = opt.get('n_epochs_saga', 100)
     eta = opt.get('learning_rate_saga',1e-1)
@@ -123,5 +129,6 @@ def SAGA(w, loss, gradient, X=None, Y=None, opt=None, **kwargs):
         
         # Update memorized gradients
         mem_gradients[idx] = grad
-        
-    return w, timings_collector, loss_collector, samples_collector
+    
+    stats_collector = {'time': timings_collector,'loss': loss_collector,'samples': samples_collector}
+    return w, stats_collector

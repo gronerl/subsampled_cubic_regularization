@@ -3,6 +3,8 @@
 ###################################################
 
 # Authors: Jonas Kohler and Aurelien Lucchi, 2017
+# Linus Groner, 2018:
+#     * added class PyTorchWrapper to provide a simple interface to compute Hv products of PyTorch models.
 
 
 from math import log
@@ -15,7 +17,8 @@ import os
 import numpy as np
 from scipy import linalg
 from sklearn.utils.extmath import randomized_svd
-
+import torch
+import util
 # Return the loss as a numpy array
 
 def square_loss(w, X , Y, alpha=1e-3):
@@ -256,6 +259,216 @@ def rosenbrock_Hv(w,X,Y,v):
 def non_convex_coercive_Hv(w,X,Y,v):
     H=non_convex_coercive_hessian(w,X,Y)
     return np.dot(H,v)
+
+class PyTorchWrapper:
+    """
+    Provides an interface to get exact loss, gradients and Hessian-vector products of a given pytorch module and loss.
+
+    """
+    def __init__(self,net, loss, l2_reg = 0.0, on_gpu=False):
+        """
+        Args:
+            net (torch.nn.Module): The model.
+            loss (callable): The loss function.
+            l2_reg (float): l2 regularization penalty parameter.
+            on_gpu (bool): True if the net is to be copied to gpu.
+        """
+        self.on_gpu = on_gpu
+        self.l2_reg = l2_reg
+        if self.on_gpu:
+            self.net = net.cuda()
+        else:
+            self.net = net
+        self.loss = loss
+        
+        self.d = 0
+        self.sizes=[]
+        for p in self.net.parameters():
+            dim = int(np.prod(p.size()))
+            self.sizes.append(dim)
+            self.d += dim
+        
+
+        # collect the parameters of net as a numpy vector
+        dim_ctr = 0
+        self.w_init = np.empty(self.d)
+        for i,p in enumerate(self.net.parameters()):
+            dim = self.sizes[i]
+            self.w_init[dim_ctr:dim_ctr+dim] = p.data.view(-1).cpu().numpy()
+            dim_ctr+=dim
+        
+        #invalidate the gradient for hv computations to ensure that
+        #Hv_store_gradient computes it the first time.
+        self.invalidate_gradient_for_hv()
+        
+    def getInitialization(self):
+        return self.w_init
+        
+    def __call__(self,w,X,Y):
+        return self.forward(w,X,Y)
+            
+    def forward(self,w,X,Y,**kwargs):
+        """
+        Computes the forward pass of self.net and self.loss as a float with the model parametrized with w
+        for the batch (X,Y)
+
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X : The input batch.
+            Y : The output label batch.
+        """
+        if self.on_gpu=='batch': # if True, then we copy each batch to gpu
+            X_device = X.cuda()
+            if id(X)!=id(Y): # if input==labels, e.g. for autoencoders, no need to copy Y again.
+                Y_device = Y.cuda()
+            else:
+                Y_device = X_device
+        else: # either cpu or batch already on gpu
+            Y_device = Y
+            X_device = X
+        
+        # volatile makes the forward pass more memory efficient if no subsequent backprop follows
+        # presumably by not storing forward maps
+        Y_torch = torch.autograd.Variable(Y_device,requires_grad=False,volatile=True) 
+        
+        #the actual forward computation
+        out = self.evaluate(w,X_device,volatile=True)
+        res = self.loss(out,Y_torch)
+        
+        # adding the l2 penalty if required
+        if self.l2_reg:
+            res = float((res.data + self.l2_reg*torch.dot(w,w)).cpu())
+        else:
+            res = float(res.data.cpu())
+        return res
+
+    def evaluate(self,w,X,volatile=False,**kwargs):
+        """
+        Computes the forward pass of self.net and self.loss and returns the resulting
+        torch.autograd.Variable
+
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X : The input batch.
+            Y : The output label batch.
+        """
+        X_torch = torch.autograd.Variable(X,requires_grad=False,volatile=volatile)
+
+        # fill self.net.parameters() with the data provided through w
+        util.setParameters(self.net,w,self.sizes)
+        res = self.net(X_torch)
+        
+        return res
+    
+    def gradient(self,w,X,Y,**kwargs):
+        """
+        Computes the forward and backward pass of self.net and returns the gradient as 1D-torch.Tensor
+        
+        Args:
+            w (torch.Tensor): The weight vector as a 1D-torch.Tensor
+            X : The input batch.
+        """
+        
+        # Hacky way to determine when the gradient for Hv_store_gradient needs to be recomputed.
+        # In both TR and ARC, the gradient for Hv_store_gradient must be recomputed coincidentally
+        # whenever the gradient is computed on the gradient batch. For other algorithms to come,
+        # a better alternative may be to actively call invalidate_gradient_for_hv() from the 
+        # optimizer, yet then the optimizer would no longer be oblivious of  this implementation
+        # of forward/gradient/Hv
+        self.invalidate_gradient_for_hv()
+        
+        
+        if self.on_gpu=='batch': # if True, then we copy each batch to gpu
+            X_device = X.cuda()
+            if id(X)!=id(Y): # if input==labels, e.g. for autoencoders, no need to copy Y again.
+                Y_device = Y.cuda()
+            else:
+                Y_device = X_device
+        else: # either cpu or batch already on gpu
+            Y_device = Y
+            X_device = X
+        
+        Y_torch = torch.autograd.Variable(Y_device,requires_grad=False)
+        
+        # compute the forward pass
+        out = self.evaluate(w,X_device)
+        E = self.loss(out,Y_torch)
+
+        # compute the backward pass
+        self.net.zero_grad()
+        grad_list = torch.autograd.grad(E,self.net.parameters())
+
+        # flatten the gradients returned by pytorch to a single 1D-torch.Tensor and adding the l2 penalty if required
+        res = util.flattenList(grad_list,self.sizes)
+        if self.l2_reg:
+            return res+(2*self.l2_reg)*w
+        else:
+            return res 
+    
+    def Hv(self,w,X,Y,v,**kwargs):
+        self.invalidate_gradient_for_hv()
+        return self.Hv_store_gradient(w,X,Y,v) 
+    
+    def invalidate_gradient_for_hv(self):
+        self.evaluate_gradient_for_hv = True
+
+
+    def Hv_store_gradient(self,w,X,Y,v,**kwargs):
+        if self.on_gpu=='batch': # if True, then we copy each batch to gpu
+            X_device = X.cuda()
+            if id(X)!=id(Y): # if input==labels, e.g. for autoencoders, no need to copy Y again.
+                Y_device = Y.cuda()
+            else:
+                Y_device = X_device
+        else: # either cpu or batch already on gpu
+            Y_device = Y
+            X_device = X
+        
+        if self.evaluate_gradient_for_hv:
+            Y_torch = torch.autograd.Variable(Y_device,requires_grad=False)
+            out = self.evaluate(w,X_device)
+            E = self.loss(out,Y_torch)
+
+            self.net.zero_grad()
+            self.gradient_for_hv = list(torch.autograd.grad(E,self.net.parameters(),retain_graph=True,create_graph=True))
+            self.evaluate_gradient_for_hv = False
+            
+        self.net.zero_grad()
+
+        # reshape 1D-torch.Tensor v such that it has the same shape as the net.parameters()
+        v_list = util.inflateVector(v,self.net,self.sizes)
+        v_torch = []
+        for vv in v_list:
+            v_torch.append(torch.autograd.Variable(vv,requires_grad=False))
+        
+        # I don't really understand why grad_outputs=v works, credit goes to user ezyang on https://github.com/pytorch/pytorch/issues/5112
+        # who uses this to emulate Rop in a thread on an unrelated issue. This is only a one-liner compared to what follows below 
+        # and behaves correctly when veryfied against finite differences.
+        hv = list(torch.autograd.grad(self.gradient_for_hv,self.net.parameters(),grad_outputs=v_torch,retain_graph=True,create_graph=False))
+        # a less concise version would look like this:
+        #dw_v_sum = 0.0
+        #for i in range(len(self.gradient_for_hv)):
+        #    dw_v_sum += torch.sum(self.gradient_for_hv[i] * v_torch[i])
+        #hv = list(torch.autograd.grad(dw_v_sum,self.net.parameters(),retain_graph=True,create_graph=False))
+       
+        # flatten the Hv-product returned by pytorch to a single 1D-torch.Tensor and adding the l2 penalty if required
+        res = util.flattenList(hv,self.sizes)
+        if self.l2_reg:
+            return res+self.l2_reg*2*v
+        else:
+            return res
+        #return res
+
+    def hessian(self,w,X,Y,**kwargs):
+        #self.invalidate_gradient_for_hv()
+        H = w.new((self.d,self.d))#np.empty((self.d,self.d))
+        v = torch.zeros_like(w)
+        for i in range(len(v)):
+            v[i] = 1
+            H[i] = self.Hv_store_gradient(w,X,Y,v)
+            v[i] = 0
+        return H
+
 
 ######## Auxiliary Functions: robust Sigmoid, log(sigmoid) and 1-log(sigmoid) computations ########
 

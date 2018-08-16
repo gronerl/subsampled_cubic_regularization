@@ -1,0 +1,6 @@
+*.pickle
+data/processed
+data/raw
+__pycache__
+*.swp
+lsf.o*
