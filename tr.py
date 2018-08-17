@@ -114,21 +114,21 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
     eta_2 = opt.get('very_successful_threshold',0.9)
     print('   - very_successful_threshold:', eta_2)
     
-    gamma_1 = opt.get('penalty_increase_multiplier',2.)
-    print('   - penalty_increase_multiplier:', gamma_1)
+    gamma_1 = opt.get('radius_decrease_multiplier',2.)
+    print('   - radius_decrease_multiplier:', gamma_1)
     
-    gamma_2= opt.get('penalty_decrease_multiplier',2.)
-    print('   - penalty_decrease_multiplier:', gamma_2)
+    gamma_2= opt.get('radius_increase_multiplier',2.)
+    print('   - radius_increase_multiplier:', gamma_2)
     
     accept_all_decreasing = opt.get('accept_all_decreasing_steps',True)
     print('   - accept_all_decreasing_steps:', accept_all_decreasing)
     
-    assert (gamma_1 >= 1 and gamma_2 >= 1), "penalty update parameters must be greater or equal to 1"
+    assert (gamma_1 >= 1 and gamma_2 >= 1), "Trust radius update parameters must be greater or equal to 1."
     
     # subsolver and related parameters
     print('\n* subsolver and related parameters:')
     subproblem_solver= opt.get('subproblem_solver','GLTR')
-    print('   - subsolver:', subproblem_solver)
+    print('   - subproblem_solver:', subproblem_solver)
     
     assert (( 
         not isinstance(subproblem_solver,DogLegTrSubproblemSolver) and not isinstance(subproblem_solver,ExactTrSubproblemSolver))

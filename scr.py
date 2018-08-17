@@ -107,8 +107,8 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
     # adaption parameters
     print('\n* trust region adaption parameters:')
     
-    sigma = opt.get('initial_penalty_parameter',1.)  # intial penalty sigma
-    print('   - initial_penalty_parameter:', sigma)
+    sigma = opt.get('initial_penalty',1.)  # intial penalty sigma
+    print('   - initial_penalty:', sigma)
     
     min_penalty = opt.get('min_penalty',0.0)  # min penalty
     print('   - min_penalty:', min_penalty)
@@ -135,7 +135,7 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
     # subsolver and related parameters
     print('\n* subsolver and related parameters:')
     subproblem_solver= opt.get('subproblem_solver','lanczos')
-    print('   - subsolver:', subproblem_solver)
+    print('   - subproblem_solver:', subproblem_solver)
     
     assert (( 
         not isinstance(subproblem_solver,ExactArcSubproblemSolver))
