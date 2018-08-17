@@ -1,3 +1,4 @@
+*.pkl
 .ipynb_checkpoints
 *.pickle
 data/processed

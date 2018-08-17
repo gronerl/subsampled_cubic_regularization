@@ -275,10 +275,7 @@ class PyTorchWrapper:
         """
         self.on_gpu = on_gpu
         self.l2_reg = l2_reg
-        if self.on_gpu:
-            self.net = net.cuda()
-        else:
-            self.net = net
+        self.net = net
         self.loss = loss
         
         self.d = 0
