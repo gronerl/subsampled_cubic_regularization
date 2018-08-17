@@ -188,8 +188,8 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
         epsilon = opt.get('epsilon',machine_precision)
         print('   - epsilon:', epsilon)
     elif scaling_matrix=='approximate_hessian_diagonal':
-        nsamples_approx = opt.get('nsamples_approx',2)
-        print('   - nsamples_approx:', nsamples_approx)
+        n_samples_hdiag = opt.get('n_samples_hdiag',2)
+        print('   - n_samples_hdiag:', n_samples_hdiag)
         power = opt.get('power',1/3)
         print('   - power:', power)
         beta = opt.get('beta',0.8)
@@ -434,10 +434,10 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
                     h = torch.abs(hdiag/10)
                 else:
                     hdiag = torch.zeros_like(w)
-                    for i in range(nsamples_approx):
+                    for i in range(n_samples_hdiag):
                         tmp.normal_()
                         hdiag += Hv(w,_X,_Y,tmp)*tmp
-                    h = beta*h + (1-beta)*torch.abs(hdiag/nsamples_approx)
+                    h = beta*h + (1-beta)*torch.abs(hdiag/n_samples_hdiag)
                 Mdiag = torch.pow(h,power)+epsilon
                 
             elif scaling_matrix == 'AdaDelta':
