@@ -1,8 +1,10 @@
 *.pkl
 .ipynb_checkpoints
 *.pickle
-data/processed
-data/raw
+data
+data
++data/a9a
++data/mnist.zip
 __pycache__
 *.swp
 lsf.o*

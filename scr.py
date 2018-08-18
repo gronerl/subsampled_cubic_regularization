@@ -163,7 +163,7 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
         print('   - exact_tol:', exact_tol)
         subproblem_solver = ExactArcSubproblemSolver(exact_tol)
     else:
-        raise NotImplementedError
+        raise NotImplementedError('Subproblem solver "'+subproblem_solver+'" unknown.')
         
     # trust region shape and related parameters
     print('\n* trust region shape and related parameters:')
@@ -390,7 +390,7 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
                 sample_size_gradient = int(initial_sample_size_gradient)
                 sample_size_loss = int(initial_sample_size_loss)
             else:
-                raise NotImplementedError
+                raise NotImplementedError('Sampling size scheme "'+method_name+'" unknown.')
             n_samples_per_step = sample_size_Hessian+sample_size_gradient #TODO or max(sample_size_Hessian,sample_size_gradient,sample_size_loss)
     
             ## b) draw batches ##
@@ -486,7 +486,7 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
                     sigterm = torch.matmul(Ur.view(d,-1),tmp2)
                     return (sigterm+epsterm)/epsilon
             else:
-                raise NotImplementedError
+                raise NotImplementedError('Trust region scaling "'+method_name+'" unknown.')
                 
             if not scaling_matrix == 'GGT':#wrap multiplication with Mdiag to fit suitable interface for GGT
                 def MV(v):

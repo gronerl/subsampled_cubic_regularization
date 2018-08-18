@@ -21,7 +21,7 @@ import signal
 def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callback=None, **kwargs):
     method_name = opt.get('method_name','SGD')
     if method_name not in ['SGD','Adagrad','RMSprop','AdaDelta','Adam','GGT']:
-        raise NotImplementedError
+        raise NotImplementedError('Gradient method "'+method_name+'" unknown.')
         
     print ('---',method_name,'---')
     
@@ -102,8 +102,6 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
         print('   - beta:', beta)
         epsilon = opt.get('epsilon',np.sqrt(machine_precision))
         print('   - epsilon:', epsilon)
-    else:
-        raise NotImplementedError
         
      # custom statistics collection
     print('\n* custom statistics collection:')
@@ -115,11 +113,14 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
     
     
     ## initialize data recordings
+    _X,_Y = sampleSingle(X, Y, batch_size, replacement)
     if sample_loss:
-        _X,_Y = sampleSingle(X, Y, batch_size, replacement)
         _loss = loss(w, _X,_Y, **kwargs)
     else:
         _loss = loss(w, X, Y, **kwargs)
+    grad = gradient(w, _X, _Y,**kwargs)
+    grad_norm = torch.norm(grad)
+    print ('Epoch ' + str(0) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(0))
     
     #initialize data recordings
     stats_collector={
@@ -130,7 +131,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
         'samples': [0],
         'iterations': [0],
         'loss': [_loss],
-        'grad_norm': [], #the grad_norm at w0 will be added after sampling the gradient again
+        'grad_norm': [grad_norm],
         
         'step_norm': [],
         'travel_distance': [0],
@@ -141,7 +142,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
     
     ## initialize variables
     timing=0
-    n_samples_seen = 0  # number of samples processed so far
+    n_samples_seen = batch_size  # number of samples processed so far
     w0 = w
     k = 0
     
@@ -156,17 +157,8 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
     start = datetime.now()
     try:
         while True:
-            #### I: Computing Gradient #####
-            _X,_Y = sampleSingle(X, Y, batch_size, replacement)
-            grad = gradient(w, _X, _Y,**kwargs)
-            grad_norm =torch.norm(grad)
-            if grad_norm < grad_tol:
-                print('Terminating due to gradient tolerance ( grad_norm =',grad_norm,'<',grad_tol,')')
-                break
-            stats_collector['grad_norm'].append(grad_norm)
-            n_samples_seen += batch_size
 
-            #### II: Update Scaling Matrix and calculate step#####
+            #### I: Update Scaling Matrix and calculate step#####
             if method_name == 'SGD':
                 s = - eta * grad
             elif method_name == 'Adagrad':
@@ -230,8 +222,14 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
             stats_collector['step_norm'].append(sn)
             w = w+s
             
+            #### II: Computing Gradient #####
+            _X,_Y = sampleSingle(X, Y, batch_size, replacement)
+            grad = gradient(w, _X, _Y,**kwargs)
+            n_samples_seen += batch_size
+            
             ### III: Save Iteration Information  ###
             if n_samples_seen >= n*(k+1):
+                k += 1
                 if w.is_cuda:# make sure all asynchronous computations complete inside the timed region
                     torch.cuda.synchronize()
                 stop=datetime.now()
@@ -245,9 +243,9 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 
                 print ('Epoch ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_epoch), '||s||={:.3e}'.format(sn))
                 if statistics_callback is not None:
+                    statistics_callback(k,w,stats_collector)
                     if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
                          torch.cuda.synchronize()
-                    statistics_callback(k+1,w,stats_collector)
                 
                 # record statistical data of the step
                 stats_collector['time'].append(timing)
@@ -255,9 +253,9 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 stats_collector['loss'].append(_loss)
                 stats_collector['travel_distance'].append(torch.norm(w-w0))
                 stats_collector['iterations'].append(n_samples_seen/batch_size)
+                stats_collector['grad_norm'].append(grad_norm)
 
                 #check for termination
-                k += 1
                 if k >= max_iterations:
                     print('Terminating due to iteration limit')
                     break
@@ -266,6 +264,9 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                     break
                 if timing>max_time:
                     print('Terminating due to time limit')
+                    break
+                if grad_norm < grad_tol:
+                    print('Terminating due to gradient tolerance ( grad_norm =',grad_norm,'<',grad_tol,')')
                     break
                 start=datetime.now()
     except AbortException:

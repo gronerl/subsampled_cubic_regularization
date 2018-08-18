@@ -153,7 +153,7 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
         print('   - exact_tol:', exact_tol)
         subproblem_solver = ExactTrSubproblemSolver(exact_tol)
     else:
-        raise NotImplementedError
+        raise NotImplementedError('Subproblem solver "'+subproblem_solver+'" unknown.')
         
     # trust region shape and related parameters
     print('\n* trust region shape and related parameters:')
@@ -380,7 +380,7 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
                 sample_size_gradient = int(initial_sample_size_gradient)
                 sample_size_loss = int(initial_sample_size_loss)
             else:
-                raise NotImplementedError
+                raise NotImplementedError('Sampling size scheme "'+method_name+'" unknown.')
             n_samples_per_step = sample_size_Hessian+sample_size_gradient #TODO or max(sample_size_Hessian,sample_size_gradient,sample_size_loss)
 
             ## b) draw batches ##
@@ -476,7 +476,7 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
                     sigterm = torch.matmul(Ur.view(d,-1),tmp2)
                     return (sigterm+epsterm)/epsilon
             else:
-                raise NotImplementedError
+                raise NotImplementedError('Trust region scaling "'+method_name+'" unknown.')
                 
             if not scaling_matrix == 'GGT':#wrap multiplication with Mdiag to fit suitable interface for GGT
                 def MV(v):
@@ -544,15 +544,18 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
             #we exclude this part from timing to be consistent with gradient methods, where this part
             #is excluded since it also computes the loss, which is not an inherent part of gradient methods,
             #and only for the purpose of tracking progress. 
+            if statistics_callback is not None:
+                if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
+                     torch.cuda.synchronize()
             timing_iteration=(datetime.now() - start).total_seconds()
+            
+            if statistics_callback is not None:
+                statistics_callback(k+1,w,stats_collector)
+            
             timing += timing_iteration
             print ('Iter ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_iteration), 'tr_radius={:.3e}'.format(_tr_radius))
             print(''.join([' ']*(6+len(str(k)))),'||s||={:.3e}'.format(sn),'||s||_M={:.3e}'.format(sns),'samples Hessian=', int(sample_size_Hessian),'samples gradient=', int(sample_size_gradient),'samples loss=', int(sample_size_loss))
             print(''.join([' ']*(6+len(str(k)))),'epoch={:.3e}'.format(n_samples_seen/n),'rho={:.6e}'.format(rho),'accepted=',colored(str(accepted_flag),('green' if accepted_flag else 'red')),'successful='+colored(str(successful_flag),('green' if successful_flag else 'red')),"\n")
-            if statistics_callback is not None:
-                if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
-                     torch.cuda.synchronize()
-                statistics_callback(k+1,w,stats_collector)
             
             # record statistical data of the step
             stats_collector['time'].append(timing)
