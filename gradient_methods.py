@@ -75,7 +75,8 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
     if method_name == 'SGD':
         pass
     elif method_name == 'Adagrad':
-        epsilon = opt.get('epsilon',1e-8)
+        epsilon = opt.get('epsilon',machine_precision)
+        print('   - epsilon:', epsilon)
     elif method_name == 'RMSprop':
         beta = opt.get('beta',0.9)
         print('   - beta:', beta)
@@ -218,8 +219,6 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                     return (sigterm+epsterm)/epsilon
                 s = - eta*MinvV(grad)
 
-            sn=torch.norm(s)
-            stats_collector['step_norm'].append(sn)
             w = w+s
             
             #### II: Computing Gradient #####
@@ -240,6 +239,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 else:
                     _loss = loss(w, X, Y, **kwargs)
                 grad_norm = np.linalg.norm(grad)
+                sn=torch.norm(s)
                 
                 print ('Epoch ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_epoch), '||s||={:.3e}'.format(sn))
                 if statistics_callback is not None:
@@ -253,7 +253,8 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 stats_collector['loss'].append(_loss)
                 stats_collector['travel_distance'].append(torch.norm(w-w0))
                 stats_collector['iterations'].append(n_samples_seen/batch_size)
-                stats_collector['grad_norm'].append(grad_norm)
+                stats_collector['grad_norm'].append(grad_norm) 
+                stats_collector['step_norm'].append(sn)
 
                 #check for termination
                 if k >= max_iterations:
