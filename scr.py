@@ -301,6 +301,8 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
     #draw a sample to compute the initial loss.
     (_X3,_Y3),(_X2,_Y2),(_X,_Y) = sampling(X, Y, initial_sample_size_loss, initial_sample_size_gradient, initial_sample_size_Hessian, replacement)
     _loss = loss(w,_X3,_Y3,**kwargs)
+    print ('Iter ' + str(0) + ': loss={:.20f}'.format(_loss), 'time={:3e}'.format(0), 'penalty={:.3e}'.format(sigma))
+    print()
     
     # initialize data recordings
     stats_collector={
@@ -328,7 +330,7 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
     if statistics_callback is not None:
         statistics_callback(0,w,stats_collector)
 
-       ## initialize variables
+    ## initialize variables
     timing=0 # counts total runtime
     n_samples_seen = 0 # counts number of samples
     previous_f = _loss # needed to compute function decrease
@@ -494,7 +496,8 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
                 def MinvV(v):
                     return v/Mdiag
             
-            subproblem_stats_collector={}
+            #### III: Compute Step ####
+            subproblem_stats_collector={} # filled by subsolver
             s = subproblem_solver(grad, Hv, hessian, sigma, _X, _Y, w,MV, MinvV, accepted_flag, subproblem_stats_collector,**kwargs)
             stats_collector['subproblem_stats'].append(subproblem_stats_collector)
 
@@ -551,16 +554,22 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
             #we exclude this part from timing to be consistent with gradient methods, where this part
             #is excluded since it also computes the loss, which is not an inherent part of gradient methods,
             #and only for the purpose of tracking progress. 
-            timing_iteration=(datetime.now() - start).total_seconds()
-            timing += timing_iteration
-            print ('Iter ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_iteration), 'penalty={:.3e}'.format(sigma))
-            print(''.join([' ']*(6+len(str(k)))),'||s||={:.3e}'.format(sn),'||s||_M={:.3e}'.format(sns),'samples Hessian=', int(sample_size_Hessian),'samples Gradient=', int(sample_size_gradient),'samples loss=', int(sample_size_loss))
-            print(''.join([' ']*(6+len(str(k)))),'epoch={:.3e}'.format(n_samples_seen/n),'rho={:.6e}'.format(rho),'accepted=',colored(str(accepted_flag),('green' if accepted_flag else 'red')),'successful='+colored(str(successful_flag),('green' if successful_flag else 'red')),"\n")
-
             if statistics_callback is not None:
                 if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
                      torch.cuda.synchronize()
-                statistics_callback(k+1,w,stats_collector)
+            timing_iteration=(datetime.now() - start).total_seconds()
+            k += 1
+            
+            if statistics_callback is not None:
+                statistics_callback(k,w,stats_collector)
+                if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
+                     torch.cuda.synchronize()
+            
+            timing += timing_iteration
+            print ('Iter ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_iteration), 'penalty={:.3e}'.format(sigma))
+            print(''.join([' ']*(6+len(str(k)))),'||s||={:.3e}'.format(sn),'||s||_M={:.3e}'.format(sns),'samples Hessian=', int(sample_size_Hessian),'samples Gradient=', int(sample_size_gradient),'samples loss=', int(sample_size_loss))
+            print(''.join([' ']*(6+len(str(k)))),'epoch={:.3e}'.format(n_samples_seen/n),'rho={:.6e}'.format(rho),'||w-w0||={:.3e}'.format(float(torch.norm(w-w0))),'accepted=',colored(str(accepted_flag),('green' if accepted_flag else 'red')),'successful='+colored(str(successful_flag),('green' if successful_flag else 'red')),"\n")
+
             # record statistical data of the step
             stats_collector['time'].append(timing)
             stats_collector['samples'].append(n_samples_seen)
@@ -572,7 +581,6 @@ def SCR(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=None, statis
             stats_collector['sigma'].append(sigma)
             
             #check for termination
-            k += 1
             if k >= max_iterations:
                 print('Terminating due to iteration limit')
                 break

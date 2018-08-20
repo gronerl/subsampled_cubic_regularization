@@ -291,7 +291,9 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
     #draw a sample to compute the initial loss.
     (_X3,_Y3),(_X2,_Y2),(_X,_Y) = sampling(X, Y, initial_sample_size_loss, initial_sample_size_gradient, initial_sample_size_Hessian, replacement)
     _loss = loss(w,_X3,_Y3,**kwargs)
-    
+    print ('Iter ' + str(0) + ': loss={:.20f}'.format(_loss), 'time={:3e}'.format(0), 'tr_radius={:.3e}'.format(tr_radius))
+    print()
+
     # initialize data recordings
     stats_collector={
         'initial_guess': w.cpu().numpy(),
@@ -548,9 +550,12 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
                 if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
                      torch.cuda.synchronize()
             timing_iteration=(datetime.now() - start).total_seconds()
+            k += 1
             
             if statistics_callback is not None:
-                statistics_callback(k+1,w,stats_collector)
+                statistics_callback(k,w,stats_collector)
+                if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
+                     torch.cuda.synchronize()
             
             timing += timing_iteration
             print ('Iter ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_iteration), 'tr_radius={:.3e}'.format(_tr_radius))
@@ -568,7 +573,6 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
             stats_collector['tr_radius'].append(tr_radius)
             
             #check for termination
-            k += 1
             if k >= max_iterations:
                 print('Terminating due to iteration limit')
                 break
