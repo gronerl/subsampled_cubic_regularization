@@ -146,7 +146,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
     n_samples_seen = batch_size  # number of samples processed so far
     w0 = w
     k = 0
-    
+    i = 0 
     #set up termination in case of e.g. KeyBoardInterrupt or LSF timelimit
     class AbortException(Exception):
         pass
@@ -163,17 +163,17 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
             if method_name == 'SGD':
                 s = - eta * grad
             elif method_name == 'Adagrad':
-                if k==0:
+                if i==0:
                     g_tau = torch.zeros_like(w)
                 g_tau += grad * grad
                 s = - eta * (1/(torch.sqrt(g_tau)+epsilon)) * grad
             elif method_name == 'RMSprop':
-                if k==0:
+                if i==0:
                     g_tau = torch.zeros_like(w)
                 g_tau = beta * g_tau + (1-beta) * grad*grad
                 s = - eta * (1/(torch.sqrt(g_tau)+epsilon))*grad
             elif method_name == 'AdaDelta':
-                if k==0:
+                if i==0:
                     g_tau = grad*grad
                     s_tau = torch.ones_like(grad)
                 else:
@@ -181,7 +181,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                     s_tau = beta_s*s_tau + (1-beta_s)*s*s
                 s = -eta*((torch.sqrt(s_tau)+epsilon)/(torch.sqrt(g_tau)+epsilon))*grad
             elif method_name == 'Adam':
-                if k==0:
+                if i==0:
                     m = torch.zeros_like(w)
                     v = torch.zeros_like(w)
                 m = beta_1*m+(1-beta_1)*grad
@@ -190,7 +190,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 vhat = v/(1-beta_2**(k+1))
                 s =  - eta * (mhat/(torch.sqrt(vhat)+epsilon))
             elif method_name == 'GGT':
-                if k==0:
+                if i==0:
                     Gt_buffer = w.new(history_size,d)
                 Gt_buffer *= beta #columns residing in Gt_buffer for k iterations are weighted with beta**k
                 Gt_buffer[k%history_size] = grad #k modulo history_size gives the index in a circular buffer
@@ -227,7 +227,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
             n_samples_seen += batch_size
             
             ### III: Save Iteration Information  ###
-            if n_samples_seen >= n*(k+1):
+            if n_samples_seen >= n*(k+1) or i>=max_iterations:
                 k += 1
                 if w.is_cuda:# make sure all asynchronous computations complete inside the timed region
                     torch.cuda.synchronize()
@@ -240,8 +240,10 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                     _loss = loss(w, X, Y, **kwargs)
                 grad_norm = np.linalg.norm(grad)
                 sn=torch.norm(s)
-                
-                print ('Epoch ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_epoch), '||s||={:.3e}'.format(sn))
+                if i>=max_iterations and n_samples_seen<n*k:
+                    print ('Termination at {:.2f} epochs'.format(n_samples_seen/n) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_epoch), '||s||={:.3e}'.format(sn))
+                else:
+                    print ('Epoch ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_epoch), '||s||={:.3e}'.format(sn))
                 if statistics_callback is not None:
                     statistics_callback(k,w,stats_collector)
                     if w.is_cuda:#time spent in the callback is not a property of the algorithm, and is hence excluded from the time measurements.
@@ -257,8 +259,8 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                 stats_collector['step_norm'].append(sn)
 
                 #check for termination
-                if k >= max_iterations:
-                    print('Terminating due to iteration limit')
+                if i >= max_iterations:
+                    print('Terminating due to iteration limit.')
                     break
                 if n_samples_seen/n >= max_epochs:
                     print('Terminating due to epoch limit')
@@ -270,6 +272,7 @@ def Gradient_Method(w, loss,gradient, X=None, Y=None, opt=None, statistics_callb
                     print('Terminating due to gradient tolerance ( grad_norm =',grad_norm,'<',grad_tol,')')
                     break
                 start=datetime.now()
+            i += 1
     except AbortException:
         print('Caught SIGINT (e.g. CTRL-C) or SIGUSR2 (e.g. LSF Runtime limit) -- Breaking out.')
     return w.cpu().numpy(), stats_collector
