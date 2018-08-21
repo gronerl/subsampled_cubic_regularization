@@ -560,7 +560,7 @@ def Trust_Region(w, loss, gradient, Hv=None, hessian=None, X=None, Y={}, opt=Non
             timing += timing_iteration
             print ('Iter ' + str(k) + ': loss={:.20f}'.format(_loss) + ' ||g||={:.3e}'.format(grad_norm),'time={:3e}'.format(timing),'dt={:.3e}'.format(timing_iteration), 'tr_radius={:.3e}'.format(_tr_radius))
             print(''.join([' ']*(6+len(str(k)))),'||s||={:.3e}'.format(sn),'||s||_M={:.3e}'.format(sns),'samples Hessian=', int(sample_size_Hessian),'samples gradient=', int(sample_size_gradient),'samples loss=', int(sample_size_loss))
-            print(''.join([' ']*(6+len(str(k)))),'epoch={:.3e}'.format(n_samples_seen/n),'rho={:.6e}'.format(rho),'accepted=',colored(str(accepted_flag),('green' if accepted_flag else 'red')),'successful='+colored(str(successful_flag),('green' if successful_flag else 'red')),"\n")
+            print(''.join([' ']*(6+len(str(k)))),'epoch={:.3e}'.format(n_samples_seen/n),'rho={:.6e}'.format(rho),'||w-w0||={:.3e}'.format(float(torch.norm(w-w0))),'accepted=',colored(str(accepted_flag),('green' if accepted_flag else 'red')),'successful='+colored(str(successful_flag),('green' if successful_flag else 'red')),"\n")
             
             # record statistical data of the step
             stats_collector['time'].append(timing)
